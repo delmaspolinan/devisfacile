@@ -36,7 +36,7 @@ canvas{border:2px dashed var(--line);border-radius:8px;width:100%;touch-action:n
 #toast{position:fixed;left:50%;bottom:130px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 16px;border-radius:8px;z-index:30;display:none}
 @media(min-width:900px){main{max-width:720px}}
 </style></head><body>
-<header><button id="back" onclick="back()">&larr; Retour</button><b id="ttl"></b></header>
+<header><button id="back" onclick="back()">&larr; Retour</button><img src="icon-192.png" alt="" onerror="this.remove()" style="width:34px;height:34px;border-radius:8px"><b id="ttl"></b></header>
 <main id="app"></main>
 <button id="fab" onclick="newD()">+ Nouveau devis</button>
 <nav><button data-t="home" onclick="go('home')">🏠<br>Accueil</button><button data-t="dev" onclick="go('dev')">📄<br>Devis</button><button data-t="cp" onclick="go('cp')">👥<br>Clients &amp; prix</button><button data-t="set" onclick="go('set')">⚙️<br>Réglages</button></nav>
@@ -95,7 +95,7 @@ function calc(d){const sub=d.lines.reduce((a,l)=>a+(+l.qty||0)*(+l.pu||0),0),rem
 /* navigation */
 function go(t){tab=t;cur=null;render();scrollTo(0,0)}
 function gate(){$("#fab").style.display="none";$("nav").style.display="none";$("#back").style.display="none";$("#ttl").textContent=APP_NAME;
-$("#app").innerHTML=<div class="card" style="margin-top:20px"><h3 style="margin-top:0">Active ${APP_NAME}</h3><p class="mut">Entre ton numéro de téléphone et le code reçu après ton paiement.</p><label>Numéro de téléphone</label><input id="atel" type="tel" inputmode="tel" placeholder="07 01 02 03 04"><label>Code d'activation</label><input id="acode" placeholder="XXXXX-XXXXX" autocapitalize="characters"><button onclick="activer()">Activer</button><button class="alt" onclick="window.open('https://wa.me/${SUPPORT_WA}?text='+encodeURIComponent('Bonjour, je veux acheter le code ${APP_NAME}'))">Obtenir mon code sur WhatsApp</button></div>}
+$("#app").innerHTML=`<div class="card" style="margin-top:20px"><h3 style="margin-top:0">Active ${APP_NAME}</h3><p class="mut">Entre ton numéro de téléphone et le code reçu après ton paiement.</p><label>Numéro de téléphone</label><input id="atel" type="tel" inputmode="tel" placeholder="07 01 02 03 04"><label>Code d'activation</label><input id="acode" placeholder="XXXXX-XXXXX" autocapitalize="characters"><button onclick="activer()">Activer</button><button class="alt" onclick="window.open('https://wa.me/${SUPPORT_WA}?text='+encodeURIComponent('Bonjour, je veux acheter le code ${APP_NAME}'))">Obtenir mon code sur WhatsApp</button></div>`}
 function render(){if(!activated)return gate();const e=!!cur;$("#fab").style.display=e?"none":"block";$("nav").style.display=e?"none":"flex";$("#back").style.display=e?"block":"none";
 $("#ttl").textContent=e?(cur.num?"Devis "+cur.num:"Nouveau devis"):({home:APP_NAME,dev:"Mes devis",cp:"Clients & prix",set:"Réglages"})[tab];
 document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on",b.dataset.t===tab));
