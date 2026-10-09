@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="fr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#22262b">
+<link rel="manifest" href="manifest.json"><link rel="icon" href="icon-192.png">
+<title>DevisFacile</title>
+<style>
+:root{--o:#e8730c;--ink:#22262b;--bg:#f5f3ef;--line:#ddd8cc;--mut:#6d716f}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 system-ui,sans-serif;padding-bottom:140px}
+header{position:sticky;top:0;z-index:5;background:var(--ink);color:#fff;padding:14px 16px;display:flex;gap:12px;align-items:center}
+header b{font-size:18px}#back{display:none;background:none;border:0;color:#fff;font-size:16px;width:auto;padding:0;margin:0}
+main{max-width:640px;margin:0 auto;padding:14px}
+.card{background:#fff;border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:12px}
+.warn{background:#fff3e3;border-color:var(--o)}.warn a,a{color:var(--o);font-weight:700;cursor:pointer}
+.row{display:flex;gap:10px}.row>*{flex:1;min-width:0}
+.big{font-size:22px;font-weight:800}small,.mut{color:var(--mut)}
+label{display:block;font-weight:600;margin:10px 0 4px;font-size:14px}.chk{display:flex;gap:8px;align-items:center}.chk input{width:auto}
+input,select,textarea{width:100%;padding:12px;font:inherit;border:1.5px solid var(--line);border-radius:8px;background:#fff;color:var(--ink)}
+input:focus,select:focus,textarea:focus,button:focus-visible{outline:3px solid var(--o);outline-offset:1px}
+button{width:100%;padding:14px;font:inherit;font-weight:700;border:0;border-radius:10px;background:var(--o);color:#fff;margin-top:10px;cursor:pointer}
+button.alt{background:#fff;color:var(--ink);border:1.5px solid var(--line)}button.del{color:#b3261e}
+.item{display:flex;justify-content:space-between;gap:10px;background:#fff;border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:8px;cursor:pointer}
+.r{text-align:right}.b{font-size:12px;padding:2px 8px;border-radius:99px;background:#eee}
+.b.accepté{background:#d6f2dd}.b.envoyé{background:#dbe8ff}.b.refusé{background:#fbdcd9}
+.ln{border-top:1px dashed var(--line);padding-top:8px;margin-top:8px}
+.ln .x{width:44px;flex:none;background:#fff;color:#b3261e;border:1.5px solid var(--line);margin:0}
+.tot{background:var(--ink);color:#fff}.tot div{display:flex;justify-content:space-between}.tot .g{font-size:20px;font-weight:800;color:#ffb066}
+nav{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid var(--line);display:flex;z-index:5}
+nav button{background:none;color:var(--mut);border-radius:0;margin:0;font-size:12px;padding:10px 2px}nav button.on{color:var(--o)}
+#fab{position:fixed;right:14px;bottom:74px;width:auto;border-radius:99px;padding:14px 20px;box-shadow:0 3px 10px #0004;z-index:6}
+#modal{display:none;position:fixed;inset:0;background:#0007;z-index:20;align-items:center;justify-content:center;padding:16px}
+#modal.on{display:flex}#modal>div{background:#fff;border-radius:12px;padding:16px;width:100%;max-width:380px}
+canvas{border:2px dashed var(--line);border-radius:8px;width:100%;touch-action:none;background:#fff}
+.pv{max-height:70px;max-width:100%;border:1px solid var(--line);border-radius:6px;background:repeating-conic-gradient(#eee 0 25%,#fff 0 50%) 0 0/12px 12px}
+#toast{position:fixed;left:50%;bottom:130px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 16px;border-radius:8px;z-index:30;display:none}
+@media(min-width:900px){main{max-width:720px}}
+</style></head><body>
+<header><button id="back" onclick="back()">&larr; Retour</button><b id="ttl"></b></header>
+<main id="app"></main>
+<button id="fab" onclick="newD()">+ Nouveau devis</button>
+<nav><button data-t="home" onclick="go('home')">🏠<br>Accueil</button><button data-t="dev" onclick="go('dev')">📄<br>Devis</button><button data-t="cp" onclick="go('cp')">👥<br>Clients &amp; prix</button><button data-t="set" onclick="go('set')">⚙️<br>Réglages</button></nav>
+<div id="modal"><div id="mb"></div></div><div id="toast"></div>
+<script src="jspdf.umd.min.js"></script>
+<script>
+const APP_NAME="DevisFacile",SUPPORT_WA="225XXXXXXXXXX",FREE=5;
+/* Module d'activation — à inclure dans l'app. Fonctionne hors-ligne. */
+const ACT_SECRET = "d57b2c60246f494ad8d9171781f3a705d718aa1657f852f0e03a5654b3deae6b";
+const ACT_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"; // sans 0,O,1,I,L
+
+function normalizePhone(p) {
+  let d = String(p).replace(/\D/g, "");
+  if (d.startsWith("00225")) d = d.slice(5);
+  else if (d.startsWith("225") && d.length > 10) d = d.slice(3);
+  return d.slice(-10);
+}
+
+async function makeCode(phone) {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey("raw", enc.encode(ACT_SECRET),
+    { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sig = new Uint8Array(await crypto.subtle.sign("HMAC", key,
+    enc.encode("devis-v1|" + normalizePhone(phone))));
+  let out = "";
+  for (let i = 0; i < 10; i++) out += ACT_ALPHABET[sig[i] % ACT_ALPHABET.length];
+  return out.slice(0, 5) + "-" + out.slice(5);
+}
+
+async function verifyCode(phone, code) {
+  const clean = String(code).toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const expected = (await makeCode(phone)).replace("-", "");
+  return clean === expected;
+}
+
+
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const M=n=>Math.round(n||0).toString().replace(/\B(?=(\d{3})+(?!\d))/g," ")+" FCFA";
+const fd=s=>new Date(s).toLocaleDateString("fr-FR");
+let S={};try{S=JSON.parse(localStorage.getItem("df1"))||{}}catch(e){}
+const DEF=()=>({co:{color:"#e8730c",tva:false,validite:30,acompte:30,ville:"Abidjan",cond:"Acompte à la commande, solde à la livraison des travaux."},clients:[],catalog:[],devis:[],act:null,n:0,seq:0});
+S=Object.assign(DEF(),S);
+const save=()=>{try{localStorage.setItem("df1",JSON.stringify(S))}catch(e){toast("Mémoire pleine : fais une sauvegarde")}};
+let activated=false,tab="home",cur=null,sub="cl",q="";
+const checkAct=async()=>{activated=!!(S.act&&await verifyCode(S.act.tel,S.act.code))};
+function toast(t){const e=$("#toast");e.textContent=t;e.style.display="block";clearTimeout(toast.t);toast.t=setTimeout(()=>e.style.display="none",2800)}
+function modal(h){$("#mb").innerHTML=h;$("#modal").classList.add("on")}const closeM=()=>$("#modal").classList.remove("on");
+const TPL={"Maçon":["Terrassement et fondations","Élévation de murs en agglos","Enduit et crépissage","Dalle béton","Main-d'oeuvre"],
+"Menuisier":["Fabrication porte","Fabrication fenêtre","Placard sur mesure","Pose et finition","Main-d'oeuvre"],
+"Peintre":["Préparation des murs","Peinture intérieure (m²)","Peinture extérieure (m²)","Fournitures","Main-d'oeuvre"],
+"Électricien":["Point lumineux","Prise de courant","Tableau électrique","Câblage (ml)","Main-d'oeuvre"],
+"Plombier":["Alimentation en eau","Évacuation","Pose de sanitaires","Chauffe-eau","Main-d'oeuvre"],
+"Carreleur":["Fourniture carreaux (m²)","Pose carrelage (m²)","Plinthes","Colle et joints","Main-d'oeuvre"]};
+function calc(d){const sub=d.lines.reduce((a,l)=>a+(+l.qty||0)*(+l.pu||0),0),rem=sub*(+d.remise||0)/100,ht=sub-rem,tva=d.tva?ht*.18:0,ttc=ht+tva;return{sub,rem,tva,ttc,ac:ttc*(+d.acompte||0)/100}}
+/* navigation */
+function go(t){tab=t;cur=null;render();scrollTo(0,0)}
+function render(){const e=!!cur;$("#fab").style.display=e?"none":"block";$("nav").style.display=e?"none":"flex";$("#back").style.display=e?"block":"none";
+$("#ttl").textContent=e?(cur.num?"Devis "+cur.num:"Nouveau devis"):({home:APP_NAME,dev:"Mes devis",cp:"Clients & prix",set:"Réglages"})[tab];
+document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on",b.dataset.t===tab));
+$("#app").innerHTML=e?vEdit():({home:vHome,dev:vList,cp:vCP,set:vSet})[tab]();if(e){lines();tot()}}
+function item(d){return `<div class="item" onclick="openD(${d.id})"><div><b>${esc(d.client||"Sans nom")}</b><br><small>${d.num} · ${fd(d.date)}</small></div><div class="r"><b>${M(calc(d).ttc)}</b><br><span class="b ${d.statut}">${d.statut}</span></div></div>`}
+const list=a=>a.map(item).join("")||'<p class="mut">Aucun devis. Appuie sur « + Nouveau devis ».</p>';
+function vHome(){const n=new Date(),ds=S.devis.filter(d=>{const x=new Date(d.date);return x.getMonth()==n.getMonth()&&x.getFullYear()==n.getFullYear()}),
+tot=ds.reduce((a,d)=>a+calc(d).ttc,0),att=S.devis.filter(d=>d.statut=="envoyé").reduce((a,d)=>a+calc(d).ttc,0);
+return `${activated?"":`<div class="card warn">Mode gratuit : ${Math.max(0,FREE-S.n)} devis restant(s). <a onclick="go('set')">Activer l'app</a></div>`}
+${S.co.nom?"":`<div class="card warn">Configure ton entreprise (logo, cachet, coordonnées) pour des devis pros. <a onclick="go('set')">Ouvrir les réglages</a></div>`}
+<div class="row"><div class="card"><small>Devis ce mois</small><div class="big">${ds.length}</div></div><div class="card"><small>Montant ce mois</small><div class="big">${M(tot)}</div></div></div>
+<div class="card"><small>En attente de réponse</small><div class="big">${M(att)}</div></div><h3>Derniers devis</h3>${list(S.devis.slice(0,5))}`}
+const flt=()=>S.devis.filter(d=>(d.client+d.num).toLowerCase().includes(q.toLowerCase()));
+const vList=()=>`<input placeholder="Rechercher un client ou un numéro" value="${esc(q)}" oninput="q=this.value;$('#lst').innerHTML=list(flt())"><div id="lst" style="margin-top:12px">${list(flt())}</div>`;
+function vCP(){const t=`<div class="row"><button class="${sub=="cl"?"":"alt"}" onclick="sub='cl';render()">Clients</button><button class="${sub=="pr"?"":"alt"}" onclick="sub='pr';render()">Mes prix</button></div>`;
+if(sub=="cl")return t+`<div class="card"><label>Nom</label><input id="cn"><label>Téléphone</label><input id="ct" type="tel"><button onclick="addCl()">Ajouter le client</button></div>`+(S.clients.map((c,i)=>`<div class="item"><div><b>${esc(c.nom)}</b><br><small>${esc(c.tel||"")}</small></div><a onclick="S.clients.splice(${i},1);save();render()">Supprimer</a></div>`).join("")||'<p class="mut">Les clients s\'ajoutent aussi tout seuls à chaque devis.</p>');
+return t+`<div class="card"><label>Matériau ou prestation</label><input id="pd" placeholder="Ex : Sac de ciment"><label>Prix (FCFA)</label><input id="pp" type="number" inputmode="numeric"><button onclick="addPr()">Ajouter au catalogue</button></div>`+(S.catalog.map((c,i)=>`<div class="item"><div><b>${esc(c.desc)}</b><br><small>${M(c.pu)}</small></div><a onclick="S.catalog.splice(${i},1);save();render()">Supprimer</a></div>`).join("")||'<p class="mut">Enregistre tes prix une fois, réutilise-les dans chaque devis.</p>')}
+function addCl(){const n=$("#cn").value.trim();if(!n)return toast("Entre un nom");S.clients.push({nom:n,tel:$("#ct").value});save();render()}
+function addPr(){const n=$("#pd").value.trim();if(!n)return toast("Entre un nom");S.catalog.push({desc:n,pu:+$("#pp").value||0});save();render()}
+/* éditeur de devis */
+function newD(){if(!activated&&S.n>=FREE)return lock();const t=new Date().toISOString();cur={id:Date.now(),num:null,date:t,client:"",tel:"",metier:"",lines:[{desc:"",qty:1,pu:0}],remise:0,acompte:S.co.acompte??30,tva:!!S.co.tva,validite:S.co.validite??30,statut:"brouillon",note:"",sig:true};render()}
+function lock(){modal(`<h3>Tes 5 devis gratuits sont utilisés</h3><p>Pour continuer, active l'app avec ton code.</p><button onclick="closeM();go('set')">J'ai un code</button><button class="alt" onclick="window.open('https://wa.me/${SUPPORT_WA}?text='+encodeURIComponent('Bonjour, je veux activer ${APP_NAME}'))">Obtenir un code sur WhatsApp</button><button class="alt" onclick="closeM()">Fermer</button>`)}
+function openD(id){cur=JSON.parse(JSON.stringify(S.devis.find(d=>d.id==id)));render();scrollTo(0,0)}
+function vEdit(){const d=cur,nm=(k,l)=>`<div><label>${l}</label><input type="number" inputmode="decimal" value="${d[k]}" oninput="cur.${k}=+this.value;tot()"></div>`;
+return `<div class="card"><label>Client</label><input list="cl" value="${esc(d.client)}" oninput="setC(this.value)" placeholder="Nom du client"><datalist id="cl">${S.clients.map(c=>`<option>${esc(c.nom)}`).join("")}</datalist>
+<label>Téléphone WhatsApp du client</label><input id="tel" type="tel" inputmode="tel" value="${esc(d.tel)}" oninput="cur.tel=this.value" placeholder="07 01 02 03 04"></div>
+<div class="card"><label>Modèle de métier</label><select onchange="tpl(this.value)"><option value="">Choisir un métier…</option>${Object.keys(TPL).map(k=>`<option>${k}`).join("")}</select><div id="ln"></div>
+<button class="alt" onclick="addL()">+ Ajouter une ligne</button>${S.catalog.length?`<select style="margin-top:10px" onchange="addCat(this.value);this.value=''"><option value="">+ Depuis mon catalogue</option>${S.catalog.map((c,i)=>`<option value="${i}">${esc(c.desc)} (${M(c.pu)})`).join("")}</select>`:""}</div>
+<div class="card"><div class="row">${nm("remise","Remise %")}${nm("acompte","Acompte %")}${nm("validite","Validité (jours)")}</div>
+<label class="chk"><input type="checkbox" ${d.tva?"checked":""} onchange="cur.tva=this.checked;tot()"> TVA 18 %</label>
+<label class="chk"><input type="checkbox" ${d.sig!==false?"checked":""} onchange="cur.sig=this.checked"> Cachet et signature sur le PDF</label>
+<label>Statut</label><select onchange="cur.statut=this.value">${["brouillon","envoyé","accepté","refusé"].map(s=>`<option ${d.statut==s?"selected":""}>${s}`).join("")}</select>
+<label>Note pour le client (facultatif)</label><textarea rows="2" oninput="cur.note=this.value">${esc(d.note)}</textarea></div>
+<div class="card tot" id="tot"></div>
+<button onclick="sendWA()">Envoyer par WhatsApp</button><button class="alt" onclick="dlPDF()">Télécharger le PDF</button><button class="alt" onclick="saveD(true)">Enregistrer</button>
+${d.num?`<button class="alt" onclick="dup()">Dupliquer</button><button class="alt del" onclick="delD()">Supprimer ce devis</button>`:""}`}
+function setC(v){cur.client=v;const c=S.clients.find(c=>c.nom.toLowerCase()==v.toLowerCase());if(c&&c.tel&&!cur.tel){cur.tel=c.tel;$("#tel").value=c.tel}}
+function lines(){$("#ln").innerHTML=cur.lines.map((l,i)=>`<div class="ln"><input placeholder="Désignation" value="${esc(l.desc)}" oninput="cur.lines[${i}].desc=this.value"><div class="row" style="margin-top:6px;align-items:center"><input type="number" inputmode="decimal" value="${l.qty}" oninput="cur.lines[${i}].qty=+this.value;tot()" aria-label="Quantité"><input type="number" inputmode="numeric" value="${l.pu||""}" placeholder="Prix unitaire" oninput="cur.lines[${i}].pu=+this.value;tot()"><button class="x" onclick="cur.lines.splice(${i},1);lines();tot()" aria-label="Retirer">✕</button></div></div>`).join("")}
+function tot(){const c=calc(cur);$("#tot").innerHTML=`<div><span>Sous-total</span><span>${M(c.sub)}</span></div>${c.rem?`<div><span>Remise</span><span>- ${M(c.rem)}</span></div>`:""}${c.tva?`<div><span>TVA 18 %</span><span>${M(c.tva)}</span></div>`:""}<div class="g"><span>TOTAL</span><span>${M(c.ttc)}</span></div><div><span>Acompte</span><span>${M(c.ac)}</span></div>`}
+const addL=()=>{cur.lines.push({desc:"",qty:1,pu:0});lines()};
+const addCat=i=>{if(i==="")return;const c=S.catalog[i];cur.lines=cur.lines.filter(l=>l.desc||l.pu);cur.lines.push({desc:c.desc,qty:1,pu:c.pu});lines();tot()};
+function tpl(k){if(!k)return;cur.metier=k;cur.lines=cur.lines.filter(l=>l.desc||l.pu).concat(TPL[k].map(x=>({desc:x,qty:1,pu:0})));lines();tot()}
+function saveD(show){if(!cur.num){if(!activated&&S.n>=FREE)return lock();S.seq++;S.n++;cur.num=`D-${new Date().getFullYear()}-${String(S.seq).padStart(3,"0")}`}
+cur.lines=cur.lines.filter(l=>l.desc||l.pu);if(!cur.lines.length)cur.lines=[{desc:"",qty:1,pu:0}];
+const i=S.devis.findIndex(d=>d.id==cur.id);if(i<0)S.devis.unshift(cur);else S.devis[i]=cur;
+if(cur.client){const c=S.clients.find(c=>c.nom.toLowerCase()==cur.client.toLowerCase());if(!c)S.clients.push({nom:cur.client,tel:cur.tel});else if(!c.tel)c.tel=cur.tel}
+save();if(show){toast("Enregistré ✓");$("#ttl").textContent="Devis "+cur.num}return true}
+function back(){if(cur&&(cur.num||cur.client||cur.lines.some(l=>l.desc||l.pu))){if(!saveD())return}cur=null;render()}
+function dup(){const c=JSON.parse(JSON.stringify(cur));if(!activated&&S.n>=FREE)return lock();c.id=Date.now();c.num=null;c.date=new Date().toISOString();c.statut="brouillon";cur=c;saveD(true);render()}
+function delD(){if(confirm("Supprimer ce devis ?")){S.devis=S.devis.filter(d=>d.id!=cur.id);save();cur=null;render()}}
+/* PDF */
+const rgb=h=>{const n=parseInt(h.slice(1),16);return[n>>16,n>>8&255,n&255]};
+const fit=(im,w,h)=>{const r=Math.min(w/im.w,h/im.h);return[im.w*r,im.h*r]};
+function makePDF(d){const doc=new jspdf.jsPDF({unit:"mm",format:"a4"}),co=S.co,c=rgb(co.color||"#e8730c"),L=15,R=195;let y=15;
+const T=(t,x,yy,o)=>doc.text(String(t),x,yy,o),F=(b,s)=>{doc.setFont("helvetica",b?"bold":"normal");doc.setFontSize(s)};
+let tx=L;if(co.logo){try{const[w,h]=fit(co.logo,26,26);doc.addImage(co.logo.d,"PNG",L,y,w,h);tx=L+30}catch(e){}}
+F(1,16);doc.setTextColor(...c);T(co.nom||"Mon entreprise",tx,y+6);F(0,9);doc.setTextColor(70);
+const adr=co.same?co.siege:co.adresse,info=[co.slogan,[co.metier,co.resp].filter(Boolean).join(" - "),[co.tel,co.tel2].filter(Boolean).join(" / "),[adr,co.ville].filter(Boolean).join(", "),co.email].filter(Boolean);
+info.forEach((t,i)=>T(t,tx,y+11+i*4.3));y+=Math.max(28,12+info.length*4.3)+4;
+doc.setFillColor(...c);doc.rect(L,y,R-L,9,"F");F(1,12);doc.setTextColor(255);T("DEVIS N° "+d.num,L+3,y+6.2);T("Date : "+fd(d.date),R-3,y+6.2,{align:"right"});y+=14;
+F(1,10);doc.setTextColor(40);T("Client",L,y);F(0,10);T(d.client||"-",L,y+5);if(d.tel)T("Tel : "+d.tel,L,y+10);
+const val=new Date(d.date);val.setDate(val.getDate()+(+d.validite||30));F(0,9);T("Valable jusqu'au "+val.toLocaleDateString("fr-FR"),R,y,{align:"right"});y+=17;
+const hd=()=>{doc.setFillColor(...c);doc.rect(L,y,R-L,7,"F");F(1,9);doc.setTextColor(255);T("Désignation",L+2,y+5);T("Qté",122,y+5,{align:"right"});T("Prix unit.",158,y+5,{align:"right"});T("Total",R-2,y+5,{align:"right"});y+=7};hd();
+doc.setTextColor(40);F(0,9);d.lines.filter(l=>l.desc||l.pu).forEach(l=>{const w=doc.splitTextToSize(l.desc||"",95),h=w.length*4.3+3;if(y+h>255){doc.addPage();y=15;hd();doc.setTextColor(40);F(0,9)}
+T(w,L+2,y+4.5);T(l.qty,122,y+4.5,{align:"right"});T(M(l.pu).replace(" FCFA",""),158,y+4.5,{align:"right"});T(M(l.qty*l.pu).replace(" FCFA",""),R-2,y+4.5,{align:"right"});y+=h;doc.setDrawColor(220);doc.line(L,y,R,y)});
+const k=calc(d);y+=6;if(y>235){doc.addPage();y=15}
+const row=(a,b,bold)=>{F(bold,bold?12:10);doc.setTextColor(bold?c[0]:40,bold?c[1]:40,bold?c[2]:40);T(a,140,y,{align:"right"});T(b,R,y,{align:"right"});y+=bold?7:5.5};
+row("Sous-total",M(k.sub));if(k.rem)row("Remise "+d.remise+" %","- "+M(k.rem));if(k.tva)row("TVA 18 %",M(k.tva));row("TOTAL",M(k.ttc),1);if(k.ac)row("Acompte ("+d.acompte+" %)",M(k.ac));
+y+=4;doc.setTextColor(40);const txt=(t,b)=>{if(!t)return;const w=doc.splitTextToSize(t,R-L);if(y+w.length*4.3>262){doc.addPage();y=15}F(b,9);T(w,L,y);y+=w.length*4.3+2};
+if(co.pay){F(1,9);T("Paiement",L,y);y+=4.5;txt(co.pay)}if(d.note||co.cond){F(1,9);T("Conditions",L,y);y+=4.5;txt(d.note);txt(co.cond)}
+y+=3;if(y>228){doc.addPage();y=15}F(1,9);doc.setTextColor(40);T("Le client (bon pour accord)",L,y);T("L'entreprise",125,y);y+=2;doc.setDrawColor(190);doc.rect(L,y,75,32);doc.rect(125,y,70,32);
+if(d.sig!==false){if(co.stamp)try{const[w,h]=fit(co.stamp,30,28);doc.addImage(co.stamp.d,"PNG",127,y+2,w,h)}catch(e){}if(co.sig)try{const[w,h]=fit(co.sig,36,20);doc.addImage(co.sig.d,"PNG",152,y+9,w,h)}catch(e){}}
+const id=[co.forme,co.rccm&&"RCCM "+co.rccm,co.ncc&&"NCC "+co.ncc,co.capital&&"Capital "+co.capital+" FCFA",co.siege&&"Siège social : "+co.siege].filter(Boolean).join(" | "),n=doc.getNumberOfPages();
+for(let i=1;i<=n;i++){doc.setPage(i);doc.setDrawColor(210);doc.line(L,279,R,279);F(0,7.5);doc.setTextColor(110);if(id)T(doc.splitTextToSize(id,R-L-18),L,283);T(i+"/"+n,R,283,{align:"right"});if(!activated)T("Devis créé avec "+APP_NAME,105,293,{align:"center"})}
+return doc}
+function dl(b,n){const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=n;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),9e3)}
+function dlPDF(){if(!saveD())return;dl(makePDF(cur).output("blob"),`Devis-${cur.num}.pdf`)}
+async function sendWA(){if(!saveD())return;const d=cur,b=makePDF(d).output("blob"),n=`Devis-${d.num}.pdf`,f=new File([b],n,{type:"application/pdf"}),
+t=`Bonjour ${d.client||""}, voici votre devis n° ${d.num} d'un montant de ${M(calc(d).ttc)}.\n${S.co.nom||""} ${S.co.tel||""}`.trim();
+const done=()=>{if(d.statut=="brouillon"){d.statut="envoyé";saveD()}};
+if(navigator.canShare&&navigator.canShare({files:[f]})){try{await navigator.share({files:[f],text:t});return done()}catch(e){if(e.name=="AbortError")return}}
+dl(b,n);const p=normalizePhone(d.tel);window.open(`https://wa.me/${p.length==10?"225"+p:""}?text=${encodeURIComponent(t)}`,"_blank");toast("PDF téléchargé : joins-le dans WhatsApp");done()}
+/* réglages */
+const fi=(k,l,t="text",p="")=>`<label>${l}</label><input type="${t}" value="${esc(S.co[k])}" placeholder="${p}" oninput="S.co['${k}']=this.value;save()">`;
+const ta=(k,l,p="")=>`<label>${l}</label><textarea rows="3" placeholder="${p}" oninput="S.co['${k}']=this.value;save()">${esc(S.co[k])}</textarea>`;
+const im=(k,l,h)=>{const v=S.co[k];return `<label>${l}</label><small>${h}</small>${v?`<div style="margin:6px 0"><img class="pv" src="${v.d}" alt=""></div>`:""}<div class="row"><label class="chk" style="margin:0"><span class="b" style="padding:10px 14px;cursor:pointer">${v?"Changer":"Choisir une photo"}</span><input type="file" accept="image/*" hidden onchange="pick('${k}',this)"></label>${k!="logo"?`<button class="alt" style="margin:0" onclick="drawSig('${k}')">Dessiner</button>`:""}${v?`<button class="alt del" style="margin:0" onclick="delete S.co['${k}'];save();render()">Retirer</button>`:""}</div>`};
+function vSet(){return `<div class="card"><h3 style="margin-top:0">Mon entreprise</h3>${fi("nom","Nom de l'entreprise")}${fi("slogan","Slogan (facultatif)")}${fi("resp","Responsable")}${fi("metier","Métier / activités")}${fi("forme","Forme juridique (facultatif)","text","Entreprise individuelle, SARL…")}
+${fi("siege","Siège social","text","Commune, quartier, rue, ville")}<label class="chk"><input type="checkbox" ${S.co.same?"checked":""} onchange="S.co.same=this.checked;save();render()"> Atelier / bureau à la même adresse que le siège</label>${S.co.same?"":fi("adresse","Adresse de l'atelier / du bureau")}
+${fi("ville","Ville")}${fi("tel","Téléphone principal / WhatsApp","tel")}${fi("tel2","Autre téléphone","tel")}${fi("email","E-mail (facultatif)","email")}${fi("rccm","RCCM (facultatif)")}${fi("ncc","NCC / numéro fiscal (facultatif)")}${fi("capital","Capital social (facultatif)")}
+${ta("pay","Moyens de paiement affichés sur le devis","Wave : 07 00 00 00 00\nOrange Money : 07 00 00 00 00")}${ta("cond","Conditions par défaut")}</div>
+<div class="card"><h3 style="margin-top:0">Image de l'entreprise</h3>${im("logo","Logo","Photo ou image de ton logo")}${im("stamp","Cachet","Tamponne sur papier blanc, prends en photo. Le fond blanc est retiré.")}${im("sig","Signature","Photo d'une signature sur papier blanc, ou dessine-la au doigt.")}</div>
+<div class="card"><h3 style="margin-top:0">Devis</h3><label>Couleur du PDF</label><input type="color" value="${S.co.color||"#e8730c"}" oninput="S.co.color=this.value;save()">
+<label class="chk"><input type="checkbox" ${S.co.tva?"checked":""} onchange="S.co.tva=this.checked;save()"> TVA 18 % par défaut</label>${fi("validite","Validité par défaut (jours)","number")}${fi("acompte","Acompte par défaut (%)","number")}</div>
+<div class="card"><h3 style="margin-top:0">Activation</h3>${activated?`<p><b>Activé ✓</b> pour ${esc(S.act.tel)}</p>`:`<p class="mut">Entre le numéro donné lors de l'achat et ton code.</p><label>Numéro de téléphone</label><input id="atel" type="tel" value="${esc(S.co.tel||"")}"><label>Code d'activation</label><input id="acode" placeholder="XXXXX-XXXXX" autocapitalize="characters"><button onclick="activer()">Activer</button>`}</div>
+<div class="card"><h3 style="margin-top:0">Sauvegarde</h3><p class="mut">Si tu perds ou changes de téléphone, tes devis sont dans la sauvegarde.</p><button onclick="exp()">Sauvegarder (envoyer sur WhatsApp)</button><label class="chk" style="margin-top:10px"><span class="b" style="padding:12px;width:100%;text-align:center;cursor:pointer">Restaurer une sauvegarde</span><input type="file" accept=".json" hidden onchange="imp(this)"></label></div>
+<div class="card"><button class="alt" style="margin:0" onclick="window.open('https://wa.me/${SUPPORT_WA}')">Besoin d'aide ? Écris-nous sur WhatsApp</button></div>`}
+function readImg(file,max,clear){return new Promise(res=>{const r=new FileReader();r.onload=()=>{const i=new Image();i.onload=()=>{const k=Math.min(1,max/Math.max(i.width,i.height)),w=Math.round(i.width*k),h=Math.round(i.height*k),cv=document.createElement("canvas");cv.width=w;cv.height=h;const x=cv.getContext("2d");x.drawImage(i,0,0,w,h);
+if(clear){const g=x.getImageData(0,0,w,h),p=g.data;for(let j=0;j<p.length;j+=4){const m=Math.min(p[j],p[j+1],p[j+2]);if(m>190)p[j+3]=Math.min(255,(255-m)*4)}x.putImageData(g,0,0)}res({d:cv.toDataURL("image/png"),w,h})};i.src=r.result};r.readAsDataURL(file)})}
+async function pick(k,inp){const f=inp.files[0];if(!f)return;S.co[k]=await readImg(f,k=="logo"?300:420,k!="logo");save();render()}
+function drawSig(k){modal(`<h3 style="margin-top:0">Signe ici</h3><canvas id="pad" width="300" height="150"></canvas><div class="row"><button class="alt" onclick="padClr()">Effacer</button><button onclick="padOk('${k}')">Valider</button></div><button class="alt" onclick="closeM()">Annuler</button>`);
+const cv=$("#pad"),x=cv.getContext("2d");x.lineWidth=2.6;x.lineCap="round";x.strokeStyle="#102a6b";let on=false;const p=e=>{const r=cv.getBoundingClientRect();return[(e.clientX-r.left)*300/r.width,(e.clientY-r.top)*150/r.height]};
+cv.onpointerdown=e=>{on=true;x.beginPath();x.moveTo(...p(e));cv.setPointerCapture(e.pointerId)};cv.onpointermove=e=>{if(on){x.lineTo(...p(e));x.stroke()}};cv.onpointerup=()=>on=false}
+const padClr=()=>{const c=$("#pad");c.getContext("2d").clearRect(0,0,300,150)};
+const padOk=k=>{S.co[k]={d:$("#pad").toDataURL("image/png"),w:300,h:150};save();closeM();render()};
+async function activer(){const t=$("#atel").value,c=$("#acode").value;if(t&&c&&await verifyCode(t,c)){S.act={tel:t,code:c};activated=true;save();toast("Activé ✓");render()}else toast("Numéro ou code incorrect")}
+async function exp(){const b=new Blob([JSON.stringify(S)],{type:"application/json"}),n=`sauvegarde-${APP_NAME}-${new Date().toISOString().slice(0,10)}.json`,f=new File([b],n,{type:"application/json"});
+if(navigator.canShare&&navigator.canShare({files:[f]})){try{await navigator.share({files:[f]});return}catch(e){if(e.name=="AbortError")return}}dl(b,n)}
+function imp(inp){const f=inp.files[0];if(!f)return;const r=new FileReader();r.onload=async()=>{try{const o=JSON.parse(r.result);if(!o.devis||!o.co)throw 0;if(!confirm("Remplacer les données actuelles par cette sauvegarde ?"))return;S=Object.assign(DEF(),o);save();await checkAct();render();toast("Sauvegarde restaurée ✓")}catch(e){toast("Fichier invalide")}};r.readAsText(f)}
+$("#modal").onclick=e=>{if(e.target.id=="modal")closeM()};
+if("serviceWorker"in navigator&&location.protocol.startsWith("http"))navigator.serviceWorker.register("sw.js");
+checkAct().then(render);
+</script></body></html>
